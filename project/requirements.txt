@@ -1,6 +1,6 @@
 flake8
 black
-fastapi~=0.68.1
+fastapi~=0.97.0
 uvicorn
 aiofiles
 jinja2
