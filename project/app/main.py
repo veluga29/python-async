@@ -4,8 +4,7 @@ from fastapi.templating import Jinja2Templates
 from pathlib import Path
 from app.models import mongodb
 from app.models.book import BookModel
-import aiohttp
-from app.book_scraper import book_scraper
+from app.book_scraper import NaverBookScraper
 
 
 BASE_DIR = Path(__file__).resolve().parent
@@ -18,29 +17,49 @@ templates = Jinja2Templates(directory=BASE_DIR / "templates")
 
 @app.get("/", response_class=HTMLResponse)
 async def root(request: Request):
-    book = BookModel(
-        keyword="python", publisher="한빛미디어", price=25000, image="python.jpg"
-    )
-    print(await mongodb.engine.save(book))
     return templates.TemplateResponse(
         "index.html", {"request": request, "title": "콜렉터 북북이"}
     )
 
 
 @app.get("/search", response_class=HTMLResponse)
-async def search(request: Request, q: str):
-    BASE_URL = "https://openapi.naver.com/v1/search/book.json"
-    urls = [
-        f"{BASE_URL}?query={q}&display=20&start={i * 20 + 1}"
-        for i in range(10)
+async def search(request: Request, q: str | None = None):
+    keyword = q
+    if not keyword:
+        return templates.TemplateResponse(
+            "index.html",
+            {"request": request, "title": "콜렉터 북북이"},
+        )
+    if await mongodb.engine.find_one(BookModel, BookModel.keyword == keyword):
+        books = await mongodb.engine.find(
+            BookModel, BookModel.keyword == keyword
+        )
+        return templates.TemplateResponse(
+            "index.html",
+            {
+                "request": request,
+                "title": "콜렉터 북북이",
+                "keyword": q,
+                "books": books,
+            },
+        )
+
+    scraper = NaverBookScraper()
+    books = await scraper.search(keyword, 10)
+    book_models = [
+        BookModel(
+            keyword=keyword,
+            publisher=book["publisher"],
+            price=book["discount"],
+            image=book["image"],
+        )
+        for book in books
     ]
+    await mongodb.engine.save_all(book_models)
 
-    async with aiohttp.ClientSession() as session:
-        data = [await book_scraper.fetch(session, url) for url in urls]
-
-    print(data)
     return templates.TemplateResponse(
-        "index.html", {"request": request, "title": "콜렉터 북북이", "keyword": q}
+        "index.html",
+        {"request": request, "title": "콜렉터 북북이", "keyword": q, "books": books},
     )
 
 
