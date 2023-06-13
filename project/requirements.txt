@@ -5,3 +5,4 @@ uvicorn
 aiofiles
 jinja2
 odmantic
+aiohttp
